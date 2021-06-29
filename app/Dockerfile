@@ -1,6 +1,6 @@
 # pull base image
 # FROM node:alpine
-FROM us-docker.pkg.dev/independency-day-mirror/base/node:alpine
+FROM us-docker.pkg.dev/independency-day-mirror/base/node:latest
 
 # set working directory
 WORKDIR /app
