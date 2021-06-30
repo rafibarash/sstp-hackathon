@@ -37,6 +37,6 @@ COPY --from=builder /app/build /usr/share/nginx/html/
 # RUN chmod +x env.sh
 
 # Start nginx server
-EXPOSE 80
+EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]
 # CMD ["/bin/bash", "-c", "/usr/share/nginx/html/env.sh && nginx -g \"daemon off;\""]
