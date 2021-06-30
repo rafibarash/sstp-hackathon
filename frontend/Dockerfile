@@ -38,5 +38,5 @@ COPY --from=builder /app/build /usr/share/nginx/html/
 
 # Start nginx server
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off"]
+CMD ["nginx", "-g", "daemon off;"]
 # CMD ["/bin/bash", "-c", "/usr/share/nginx/html/env.sh && nginx -g \"daemon off;\""]
