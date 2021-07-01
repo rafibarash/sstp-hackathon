@@ -26,8 +26,7 @@ type UpstreamChangedReq struct {
 // Handles API routes for mux router.
 func handleRoutes(r *mux.Router) {
 	r.HandleFunc("/ping", Ping).Methods("GET")
-	r.HandleFunc("/watch", WatchDependency).Methods("POST")
-	r.HandleFunc("/notification", HandleNotification).Methods("POST")
+	r.HandleFunc("/upstream", UpstreamChanged).Methods("POST")
 }
 
 func Ping(w http.ResponseWriter, r *http.Request) {
