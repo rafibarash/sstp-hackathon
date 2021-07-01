@@ -1,9 +1,5 @@
 package main
 
-const (
-	""
-)
-
 func main() {
 	// Initialize router.
 	r := mux.NewRouter()
@@ -15,9 +11,7 @@ func main() {
 		port = "8080"
 	}
 	fmt.Println("Server starting on http://localhost:" + port + "...")
-	allowedOrigins := handlers.AllowedOrigins([]string{"http://localhost:3000", "http://localhost:5000", "https://frontend-bwkgpgz7aq-uc.a.run.app"})
-	http.ListenAndServe(fmt.Sprintf(":%s", port), handlers.CORS(allowedOrigins)(r))
-	// http.ListenAndServe(fmt.Sprintf(":%s", port), r)
+	http.ListenAndServe(fmt.Sprintf(":%s", port), r)
 }
 
 /*****************************************
@@ -25,17 +19,9 @@ func main() {
  ****************************************/
 
 type UpstreamChangedReq struct {
-	Tag string `json:"tag"`
+	Tag    string `json:"tag"`
 	Digest string `json:"digest"`
 }
-
-// // Notification is the GCR/AR notification payload as described in
-// // https://cloud.google.com/artifact-registry/docs/configure-notifications#examples.
-// type Notification struct {
-// 	Action string `json:"action"`
-// 	Digest string `json:"digest"`
-// 	Tag    string `json:"tag"`
-// }
 
 // Handles API routes for mux router.
 func handleRoutes(r *mux.Router) {
