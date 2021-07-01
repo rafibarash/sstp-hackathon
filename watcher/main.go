@@ -72,8 +72,7 @@ func WatchDependency(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	// TODO: Query for base ref in dependencies table.
-	// If not present, add new row to dependencies table
+	// TODO: INSERT into dependencies table
 	watchset[wr.Tag] = member
 	fmt.Printf("Added tag %q to watchset...\n", wr.Tag)
 	fmt.Printf("Watching for tags: %v\n", watchset)
@@ -96,44 +95,8 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(status.StatusOK)
 		return
 	}
-	// INSERT into images
-	// Get all image digests that need be rebuilt (images that depend on upstream)
-
+	// INSERT into images table
+	// Call differ to get all image digests that need be rebuilt (images that depend on upstream)
+	// Send build trigger requests for all out of date images
 	w.WriteHeader(http.StatusOK)
 }
-
-// // isDependencyChange returns true if the passed in notification represents a dependency change
-// // for a service (prod image) we own, along with the dependent service's tag.
-// func isDependencyChange(n Notification) (bool, string) {
-// 	if n.Action != "INSERT" {
-// 		return false, ""
-// 	}
-// 	// TODO: Query db to see if tag is a dependency (base image) for a service (prod image) we own.
-// 	// TODO: Only return true if notification's digest is different than base image digest in db.
-// 	// For now we will just use hardcoded dependency and service and ignore digest/tags.
-// 	if imageNameFromTag(depTag) != imageNameFromDigest(n.Digest) {
-// 		return false, ""
-// 	}
-// 	return true, servTag
-// }
-
-// func isServiceChange(n Notification) bool {
-// 	if n.Action != "INSERT" {
-// 		return false
-// 	}
-// 	// TODO: Query db to see if tag is a service we own.
-// 	// For now just use hardcoded service and ignore digest/tags.
-// 	return imageNameFromTag(servTag) == imageNameFromDigest(n.Digest)
-// }
-
-/*****************************************
- ** Misc Helpers
- ****************************************/
-
-// func imageNameFromDigest(d string) string {
-// 	return strings.Split(d, "@")[0]
-// }
-
-// func imageNameFromTag(t string) string {
-// 	return strings.Split(t, ":")[0]
-// }
