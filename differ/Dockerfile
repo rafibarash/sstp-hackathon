@@ -37,10 +37,10 @@ RUN apk --no-cache add ca-certificates
 COPY --from=builder /go/bin .
 
 # Give the executable permission to run
-RUN chmod +x ./watcher
+RUN chmod +x ./differ
 
-# Configure container to run as watcher executable
-ENTRYPOINT ["./watcher"]
+# Configure container to run as differ executable
+ENTRYPOINT ["./differ"]
 
 # Expose port 8080 to the outside world
 EXPOSE 8080
