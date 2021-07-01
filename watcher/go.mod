@@ -1,4 +1,4 @@
-module github.com/rafibarash/sstp-hackathon/subscriber
+module github.com/rafibarash/sstp-hackathon/watcher
 
 go 1.16
 
