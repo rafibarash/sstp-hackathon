@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -16,7 +17,8 @@ var (
 	dependencyCols = []string{"SourceDigest", "BaseDigest", "BaseRef"}
 	imageCols      = []string{"Repository", "Tag", "Digest"}
 
-	dbClient *spanner.Client
+	dbClient  *spanner.Client
+	differURL string
 )
 
 const (
@@ -45,6 +47,12 @@ func main() {
 		return
 	}
 
+	// Set differ url.
+	differURL = os.Getenv("DIFFER")
+	if differURL == "" {
+		differURL = "http://localhost:8081"
+	}
+
 	// Listen and serve baby.
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -70,6 +78,12 @@ type Notification struct {
 	Action string `json:"action"`
 	Digest string `json:"digest"`
 	Tag    string `json:"tag"`
+}
+
+type Image struct {
+	Repository string `json:"repository"`
+	Tag        string `json:"tag"`
+	Digest     string `json:"digest"`
 }
 
 // Handles API routes for mux router.
@@ -108,6 +122,13 @@ func addDependency(ctx context.Context, wr WatchReq) error {
 	return err
 }
 
+// addImage inserts into the Spanner Images table.
+func addImage(ctx context.Context, i Image) error {
+	m := spanner.Insert("Images", imageCols, []interface{}{i.Repository, i.Tag, i.Digest})
+	_, err := dbClient.Apply(ctx, []*spanner.Mutation{m})
+	return err
+}
+
 // HandleNotification recieves notifications from pushes/deletions to AR/GCR.
 // If a service (prod image) we own is updated, we ...
 // If a service dependency (base image) is updated, ... and create a Cloud Build Trigger to rebuild our service's image.
@@ -123,8 +144,31 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	// INSERT into images table
-	// Call differ to get all image digests that need be rebuilt (images that depend on upstream)
+	// INSERT into images table.
+	i := Image{Repository: "", Tag: n.Tag, Digest: n.Digest}
+	if err := addImage(r.Context(), i); err != nil {
+		fmt.Printf("Failed to add image %v to spanner: %v", i, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	fmt.Printf("Added image %v to spanner...\n", i)
+	// Call differ to get all image digests that need be rebuilt (images that depend on upstream).
+	params := fmt.Sprintf("tag=%s&digest=%s", n.Tag, n.Digest)
+	path := fmt.Sprintf("%s?%s", differURL, params)
+	resp, err := http.Get(path)
+	if err != nil {
+		fmt.Printf("Diff request %q failed: %v\n", path, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Failed to read body from diff request %q: %v\n", path, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	fmt.Printf("Successful diff request %q returned: %v", path, body)
 	// Send build trigger requests for all out of date images
 	w.WriteHeader(http.StatusOK)
 }
