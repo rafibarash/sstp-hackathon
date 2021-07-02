@@ -1,18 +1,22 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 
+	"cloud.google.com/go/spanner"
 	"github.com/gorilla/mux"
 )
 
 var (
-	watchset = make(map[string]void)
-	member   void
+	dependencyCols = []string{"SourceDigest", "BaseDigest", "BaseRef"}
+	imageCols      = []string{"Repository", "Tag", "Digest"}
+
+	dbClient *spanner.Client
 )
 
 const (
@@ -21,12 +25,25 @@ const (
 	servTag = "us-docker.pkg.dev/jonjohnson-test/sstp-hackathon/frontend:latest"
 )
 
-type void struct{}
-
 func main() {
+	ctx := context.Background()
+
 	// Initialize router.
 	r := mux.NewRouter()
 	handleRoutes(r)
+
+	// Initialize db client.
+	dbName := os.Getenv("DB")
+	if dbName == "" {
+		dbName = "projects/jonjohnson-test/instances/independency/databases/day"
+	}
+	var err error
+	dbClient, err = spanner.NewClient(ctx, dbName)
+	defer dbClient.Close()
+	if err != nil {
+		fmt.Printf("Failed to connect to db %q: %v", dbName, err)
+		return
+	}
 
 	// Listen and serve baby.
 	port := os.Getenv("PORT")
@@ -42,7 +59,9 @@ func main() {
  **************************************************/
 
 type WatchReq struct {
-	Tag string `json:"tag"`
+	SourceDigest string `json:"source_digest"`
+	BaseDigest   string `json:"base_digest"`
+	BaseRef      string `json:"base_ref"`
 }
 
 // Notification is the GCR/AR notification payload as described in
@@ -71,12 +90,22 @@ func WatchDependency(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	// TODO: INSERT into dependencies table
-	watchset[wr.Tag] = member
-	fmt.Printf("Added tag %q to watchset...\n", wr.Tag)
-	fmt.Printf("Watching for tags: %v\n", watchset)
+	// INSERT into dependencies table.
+	if err := addDependency(r.Context(), wr); err != nil {
+		fmt.Printf("Failed to add dependency %v to spanner: %v", wr, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	fmt.Printf("Added dependency %v to spanner...\n", wr)
 	w.WriteHeader(http.StatusCreated)
 	return
+}
+
+// addDependency inserts into the Spanner Dependency table.
+func addDependency(ctx context.Context, wr WatchReq) error {
+	m := spanner.Insert("Dependencies", dependencyCols, []interface{}{wr.SourceDigest, wr.BaseDigest, wr.BaseRef})
+	_, err := dbClient.Apply(ctx, []*spanner.Mutation{m})
+	return err
 }
 
 // HandleNotification recieves notifications from pushes/deletions to AR/GCR.
@@ -99,7 +128,3 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 	// Send build trigger requests for all out of date images
 	w.WriteHeader(http.StatusOK)
 }
-
-/***************************************************
- ** DB
- **************************************************/
