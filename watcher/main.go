@@ -6,9 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 
-	"github.com/csci4950tgt/sstp-hackathon/spanner"
 	"github.com/gorilla/mux"
 )
 
@@ -93,7 +91,7 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 	}
 	// Only handle INSERT notifications.
 	if n.Action != "INSERT" {
-		w.WriteHeader(status.StatusOK)
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 	// INSERT into images table
