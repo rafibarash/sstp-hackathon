@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/csci4950tgt/sstp-hackathon/spanner"
 	"github.com/gorilla/mux"
 )
 
@@ -38,9 +39,9 @@ func main() {
 	http.ListenAndServe(fmt.Sprintf(":%s", port), r)
 }
 
-/*****************************************
+/***************************************************
  ** Routes
- ****************************************/
+ **************************************************/
 
 type WatchReq struct {
 	Tag string `json:"tag"`
@@ -100,3 +101,7 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 	// Send build trigger requests for all out of date images
 	w.WriteHeader(http.StatusOK)
 }
+
+/***************************************************
+ ** DB
+ **************************************************/
