@@ -48,7 +48,7 @@ func main() {
 	}
 	topicName := os.Getenv("BUILD_TOPIC")
 	if topicName == "" {
-		topicName = "projects/jonjohnson-test/topics/frontend-build"
+		topicName = "frontend-build"
 	}
 
 	var err error
@@ -65,11 +65,7 @@ func main() {
 		fmt.Printf("Failed to connect to pubsub %q: %v", dbName, err)
 		return
 	}
-	topic, err = pubsubClient.CreateTopic(context.Background(), topicName)
-	if err != nil {
-		fmt.Printf("Failed to create topic %q: %v", topicName, err)
-		return
-	}
+	topic = pubsubClient.Topic(topicName)
 
 	// Set differ url.
 	differURL = os.Getenv("DIFFER")
