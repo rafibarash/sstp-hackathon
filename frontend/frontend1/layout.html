@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>In-Dependency Day</title>
+  <style>
+    .container {
+      text-align: center;
+      margin: 2rem auto;
+      padding: 2rem;
+    }
+
+    /* Set color scheme */
+    {{if .IsRed}}
+      html {
+        background-color: red;
+        color: white;
+      }
+    {{end}}
+
+    {{if .IsGreen}}
+      html {
+        background-color: lightgreen;
+        color: white;
+      }
+    {{end}}
+
+    {{if .IsDefault}}
+      html {
+        background-color: lightgray;
+        color: black;
+      }
+    {{end}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>{{.PageHeader}}</h1>
+    <p>{{.DemoColor}}</p>
+  </div>
+</body>
+</html>
