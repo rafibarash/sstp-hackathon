@@ -326,7 +326,7 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get all images that depend on this tag with the wrong digest.
-	stmt := spanner.NewStatement("SELECT i.Tag, i.Digest FROM Images i JOIN Dependencies d ON d.BaseRef = i.Tag WHERE d.BaseRef = @baseRef AND d.BaseDigest != @baseDigest")
+	stmt := spanner.NewStatement("SELECT i.Tag, i.Digest FROM Images i JOIN Dependencies d ON d.SourceDigest = i.Digest WHERE d.BaseRef = @baseRef AND d.BaseDigest != @baseDigest")
 	stmt.Params["baseRef"] = i.Tag
 	stmt.Params["baseDigest"] = ref.Identifier()
 	iter := dbClient.Single().Query(r.Context(), stmt)
