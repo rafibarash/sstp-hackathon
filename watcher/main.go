@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 
+	"google.golang.org/api/iterator"
+
 	"cloud.google.com/go/spanner"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/google"
@@ -236,28 +238,31 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 	// Check to see if this image has any dependencies.
 	ref, err := name.ParseReference(i.Digest)
 	if err != nil {
+		log.Printf("parse(%s) = %v", i.Digest, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	img, err := remote.Image(ref, remote.WithAuthFromKeychain(google.Keychain))
 	if err != nil {
+		log.Printf("pull(%s) = %v", ref, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	m, err := img.Manifest()
 	if err != nil {
+		log.Printf("img.Manifest() = %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	if len(m.Annotations) != 0 {
 		if baseDigest, ok := m.Annotations["org.opencontainers.image.base.digest"]; ok {
 			if baseName, ok := m.Annotations["org.opencontainers.image.base.name"]; ok {
-				baseRef, err := name.ParseReference(baseName + "@" + baseDigest)
+				baseRef, err := name.ParseReference(baseName)
 				if err != nil {
 					w.WriteHeader(http.StatusInternalServerError)
 					return
 				}
-				log.Printf("%s depends on %s", ref, baseRef)
+				log.Printf("%s depends on %s@%s", ref, baseRef, baseDigest)
 				// TODO: Set up a pubsub subscription (if needed for cross-project stuff).
 				wr := WatchReq{
 					SourceDigest: ref.Identifier(),
@@ -271,11 +276,52 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				fmt.Printf("Added dependency %v to spanner...\n", wr)
+
+				// TODO: See if this new image depends on an old tag.
+				desc, err := remote.Head(baseRef, remote.WithAuthFromKeychain(google.Keychain))
+				if err != nil {
+					log.Printf("head(%s) = %v", ref, err)
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+
+				if got, want := desc.Digest.String(), baseDigest; got != want {
+					log.Printf("%s depends on %s but is out of date; got %s want %s", ref, baseRef, got, want)
+					// TODO: Rebase? Rebuild? Pubsub?
+				}
 			}
 		}
 	}
 
-	// TODO: Just implement differ inline
+	// Get all images that depend on this tag with the wrong digest.
+	stmt := spanner.NewStatement("SELECT i.Tag, i.Digest FROM Images i JOIN Dependencies d ON d.BaseRef = i.Tag WHERE d.BaseRef = @baseRef AND d.BaseDigest != @baseDigest")
+	stmt.Params["baseRef"] = i.Tag
+	stmt.Params["baseDigest"] = ref.Identifier()
+	iter := dbClient.Single().Query(r.Context(), stmt)
+	for {
+		row, err := iter.Next()
+		if err == iterator.Done {
+			w.WriteHeader(http.StatusInternalServerError)
+			break
+		}
+		if err != nil {
+			fmt.Printf("iter.Next() = %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		var tag, digest string
+		if err := row.Columns(&tag, &digest); err != nil {
+			fmt.Printf("row.Columns() = %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		got, want := digest, ref.Identifier()
+		log.Printf("%s depends on %s but is out of date; got %s want %s", tag, i.Tag, got, want)
+		// TODO: Rebase? Rebuild? Pubsub?
+	}
+	defer iter.Stop()
+
 	// Call differ to get all image digests that need be rebuilt (images that depend on upstream).
 	params := fmt.Sprintf("tag=%s&digest=%s", n.Tag, n.Digest)
 	path := fmt.Sprintf("%s?%s", differURL, params)
