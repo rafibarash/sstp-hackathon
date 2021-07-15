@@ -19,7 +19,7 @@ COPY . .
 RUN go mod download
 
 # Build api executable (to be used in next stage)
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o /go/bin/api .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o /go/bin/watcher .
 
 
 ### STEP 2: Copy executable into a new smaller image
