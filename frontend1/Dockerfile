@@ -24,9 +24,6 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o /go/bin/frontend .
 
 ### STEP 2: Copy executable into a new smaller image
 
-# Use the alpine linux runtime as a parent image
-FROM alpine:latest
-
 ### Stage 2 - the production environment
 FROM us-docker.pkg.dev/jonjohnson-test/sstp-hackathon/nginx:latest
 
