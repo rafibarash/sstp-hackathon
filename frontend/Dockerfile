@@ -1,6 +1,6 @@
 ### Stage 1 - the build process
 # Base image
-FROM us-docker.pkg.dev/independency-day-mirror/base/node:latest as builder
+FROM us-docker.pkg.dev/jonjohnson-test/sstp-hackathon/node:latest as builder
 
 # set working directory
 WORKDIR /app
