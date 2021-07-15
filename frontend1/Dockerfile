@@ -28,13 +28,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o /go/bin/frontend .
 FROM alpine:latest
 
 ### Stage 2 - the production environment
-# FROM nginx:alpine
 FROM us-docker.pkg.dev/jonjohnson-test/sstp-hackathon/nginx:latest
 
 # Set the current working directory
 WORKDIR /root/
-
-# ENV DEMO_COLOR=green
 
 # add certificates
 RUN apk --no-cache add ca-certificates

@@ -9,20 +9,30 @@ import (
 
 type PageData struct {
 	PageHeader string
-	DemoColor  string
+	IsRed      bool
+	IsGreen    bool
+	IsDefault  bool
 }
 
 func main() {
 	tmpl := template.Must(template.ParseFiles("layout.html"))
 	c := os.Getenv("DEMO_COLOR")
-	fmt.Printf("demo color: %q\n", c)
+	data := PageData{
+		PageHeader: "Happy In-Dependency Day!",
+	}
+
+	if c == "red" {
+		data.IsRed = true
+	} else if c == "green" {
+		data.IsGreen = true
+	} else {
+		data.IsDefault = true
+	}
+
+	fmt.Printf("page data: %v\n", data)
 
 	// Template route.
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		data := PageData{
-			PageHeader: "Happy In-Dependency Day!",
-			DemoColor:  c,
-		}
 		tmpl.Execute(w, data)
 	})
 
