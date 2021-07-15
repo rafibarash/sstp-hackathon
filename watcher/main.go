@@ -196,6 +196,7 @@ func addDependency(ctx context.Context, wr WatchReq) error {
 	_, err := dbClient.Apply(ctx, []*spanner.Mutation{m})
 	if err != nil && status.Code(err) == codes.AlreadyExists {
 		log.Printf("dep %s already exists", wr.SourceDigest)
+		return nil
 	}
 	return err
 }
@@ -284,6 +285,7 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 			if baseName, ok := m.Annotations["org.opencontainers.image.base.name"]; ok {
 				baseRef, err := name.ParseReference(baseName)
 				if err != nil {
+					log.Printf("parse ref: %v", err)
 					w.WriteHeader(http.StatusInternalServerError)
 					return
 				}
@@ -312,7 +314,7 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 
 				if got, want := desc.Digest.String(), baseDigest; got != want {
 					log.Printf("DEMO %s depends on %s but is out of date; got %s want %s", ref, baseRef, got, want)
-					if ref.String() == servTag {
+					if i.Tag == servTag {
 						res := topic.Publish(r.Context(), &pubsub.Message{Data: []byte(baseRef.String())})
 						id, err := res.Get(r.Context())
 						if err != nil {
@@ -333,7 +335,6 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 	for {
 		row, err := iter.Next()
 		if err == iterator.Done {
-			w.WriteHeader(http.StatusInternalServerError)
 			break
 		}
 		if err != nil {
@@ -360,6 +361,4 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	defer iter.Stop()
-
-	w.WriteHeader(http.StatusOK)
 }

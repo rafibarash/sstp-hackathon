@@ -1,6 +1,6 @@
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'us-docker.pkg.dev/jonjohnson-test/sstp-hackathon/frontend:latest', '.']
+    args: ['build', '-t', 'us-docker.pkg.dev/jonjohnson-test/sstp-hackathon/frontend:latest', './frontend/']
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'us-docker.pkg.dev/jonjohnson-test/sstp-hackathon/frontend:latest']
   # This is racy, but imagine it were built into docker.
