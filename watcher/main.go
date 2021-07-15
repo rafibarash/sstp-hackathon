@@ -9,6 +9,8 @@ import (
 	"os"
 
 	"google.golang.org/api/iterator"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"cloud.google.com/go/pubsub"
 	"cloud.google.com/go/spanner"
@@ -192,6 +194,9 @@ func WatchDependency(w http.ResponseWriter, r *http.Request) {
 func addDependency(ctx context.Context, wr WatchReq) error {
 	m := spanner.Insert("Dependencies", dependencyCols, []interface{}{wr.SourceDigest, wr.BaseDigest, wr.BaseRef})
 	_, err := dbClient.Apply(ctx, []*spanner.Mutation{m})
+	if err != nil && status.Code(err) == codes.AlreadyExists {
+		log.Printf("dep %s already exists", wr.SourceDigest)
+	}
 	return err
 }
 
