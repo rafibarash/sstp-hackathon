@@ -1,31 +1,47 @@
-### Stage 1 - the build process
-# Base image
-FROM us-docker.pkg.dev/jonjohnson-test/sstp-hackathon/node:latest as builder
+# Using Multi-stage build process to minify final api container
+# https://docs.docker.com/develop/develop-images/multistage-build/#use-multi-stage-builds
 
-# set working directory
-WORKDIR /app
+### STEP 1: build executable binary
 
-# add `/app/node_modules/.bin` to $PATH
-ENV PATH /app/node_modules/.bin:$PATH
+# Based off the Golang Dockerfile example
+# https://hub.docker.com/_/golang
 
-# install and cache app dependencies
-COPY package.json /app/package.json
-RUN npm install --production --silent
-COPY . ./
+# Use the official Golang runtime as a parent image
+FROM golang:latest AS builder
 
-# build app
-RUN npm run build
+# Set the current working directory
+WORKDIR /go/src/app
 
+# Copy the current directory contents into the container
+COPY . .
+
+# Download and install necessary Golang dependencies
+RUN go mod download
+
+# Build api executable (to be used in next stage)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o /go/bin/frontend .
+
+
+### STEP 2: Copy executable into a new smaller image
 
 ### Stage 2 - the production environment
 FROM us-docker.pkg.dev/jonjohnson-test/sstp-hackathon/nginx:latest
 
-# Copy built frontend to be served by nginx
-COPY --from=builder /app/build /usr/share/nginx/html/
+# Set the current working directory
+WORKDIR /root/
 
-# Echo time into app file
-RUN echo time
+# add certificates
+RUN apk --no-cache add ca-certificates
 
-# Start nginx server
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+# Copy the Pre-built binary file from the previous stage
+COPY --from=builder /go/bin .
+COPY --from=builder /go/src/app/layout.html .
+
+# Give the executable permission to run
+RUN chmod +x ./frontend
+
+# Configure container to run as watcher executable
+ENTRYPOINT ["./frontend"]
+
+# Expose port 8080 to the outside world
+EXPOSE 8080

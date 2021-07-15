@@ -12,6 +12,3 @@ steps:
       gcrane mutate us-docker.pkg.dev/jonjohnson-test/sstp-hackathon/frontend:latest \
         -a "org.opencontainers.image.base.name=us-docker.pkg.dev/jonjohnson-test/sstp-hackathon/nginx:latest" \
         -a "org.opencontainers.image.base.digest=$(gcrane digest us-docker.pkg.dev/jonjohnson-test/sstp-hackathon/nginx:latest)"
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
-    args: ['run', 'deploy', 'independency-day-frontend', '--image', 'us-docker.pkg.dev/jonjohnson-test/sstp-hackathon/frontend:latest', '--region', 'us-west1', '--platform', 'managed', '--project', 'jonjohnson-test']
