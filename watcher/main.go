@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 
 	"google.golang.org/api/iterator"
 
+	"cloud.google.com/go/pubsub"
 	"cloud.google.com/go/spanner"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/google"
@@ -22,8 +22,10 @@ var (
 	dependencyCols = []string{"SourceDigest", "BaseDigest", "BaseRef"}
 	imageCols      = []string{"Repository", "Tag", "Digest"}
 
-	dbClient  *spanner.Client
-	differURL string
+	dbClient     *spanner.Client
+	pubsubClient *pubsub.Client
+	topic        *pubsub.Topic
+	differURL    string
 )
 
 const (
@@ -44,11 +46,28 @@ func main() {
 	if dbName == "" {
 		dbName = "projects/jonjohnson-test/instances/independency/databases/day"
 	}
+	topicName := os.Getenv("BUILD_TOPIC")
+	if topicName == "" {
+		topicName = "projects/jonjohnson-test/topics/frontend-build"
+	}
+
 	var err error
 	dbClient, err = spanner.NewClient(ctx, dbName)
 	defer dbClient.Close()
 	if err != nil {
 		fmt.Printf("Failed to connect to db %q: %v", dbName, err)
+		return
+	}
+
+	pubsubClient, err = pubsub.NewClient(ctx, "jonjohnson-test")
+	defer pubsubClient.Close()
+	if err != nil {
+		fmt.Printf("Failed to connect to pubsub %q: %v", dbName, err)
+		return
+	}
+	topic, err = pubsubClient.CreateTopic(context.Background(), topicName)
+	if err != nil {
+		fmt.Printf("Failed to create topic %q: %v", topicName, err)
 		return
 	}
 
@@ -292,7 +311,14 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 
 				if got, want := desc.Digest.String(), baseDigest; got != want {
 					log.Printf("DEMO %s depends on %s but is out of date; got %s want %s", ref, baseRef, got, want)
-					// TODO: Rebase? Rebuild? Pubsub?
+					if ref.String() == servTag {
+						res := topic.Publish(r.Context(), &pubsub.Message{Data: []byte(baseRef.String())})
+						id, err := res.Get(r.Context())
+						if err != nil {
+							log.Printf("Publish(%s): %v", baseRef, err)
+						}
+						log.Printf("Published %s", id)
+					}
 				}
 			}
 		}
@@ -323,7 +349,14 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 		}
 		got, want := digest, ref.Identifier()
 		log.Printf("DEMO: %s depends on %s but is out of date; got %s want %s", tag, i.Tag, got, want)
-		// TODO: Rebase? Rebuild? Pubsub?
+		if tag == servTag {
+			res := topic.Publish(r.Context(), &pubsub.Message{Data: []byte(i.Tag)})
+			id, err := res.Get(r.Context())
+			if err != nil {
+				log.Printf("Publish(%s): %v", i.Tag, err)
+			}
+			log.Printf("Published %s", id)
+		}
 	}
 	defer iter.Stop()
 
