@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 
 	"google.golang.org/api/iterator"
 
+	"cloud.google.com/go/pubsub"
 	"cloud.google.com/go/spanner"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/google"
@@ -22,8 +22,10 @@ var (
 	dependencyCols = []string{"SourceDigest", "BaseDigest", "BaseRef"}
 	imageCols      = []string{"Repository", "Tag", "Digest"}
 
-	dbClient  *spanner.Client
-	differURL string
+	dbClient     *spanner.Client
+	pubsubClient *pubsub.Client
+	topic        *pubsub.Topic
+	differURL    string
 )
 
 const (
@@ -44,11 +46,28 @@ func main() {
 	if dbName == "" {
 		dbName = "projects/jonjohnson-test/instances/independency/databases/day"
 	}
+	topicName := os.Getenv("BUILD_TOPIC")
+	if topicName == "" {
+		topicName = "projects/jonjohnson-test/topics/frontend-build"
+	}
+
 	var err error
 	dbClient, err = spanner.NewClient(ctx, dbName)
 	defer dbClient.Close()
 	if err != nil {
 		fmt.Printf("Failed to connect to db %q: %v", dbName, err)
+		return
+	}
+
+	pubsubClient, err = pubsub.NewClient(ctx, "jonjohnson-test")
+	defer pubsubClient.Close()
+	if err != nil {
+		fmt.Printf("Failed to connect to pubsub %q: %v", dbName, err)
+		return
+	}
+	topic, err = pubsubClient.CreateTopic(context.Background(), topicName)
+	if err != nil {
+		fmt.Printf("Failed to create topic %q: %v", topicName, err)
 		return
 	}
 
@@ -197,14 +216,12 @@ func deleteImage(ctx context.Context, i Image) error {
 // If a service (prod image) we own is updated, we ...
 // If a service dependency (base image) is updated, ... and create a Cloud Build Trigger to rebuild our service's image.
 func HandleNotification(w http.ResponseWriter, r *http.Request) {
-	log.Printf("HandleNotification: %v", r.URL)
 	var pn PushNotification
 	if err := json.NewDecoder(r.Body).Decode(&pn); err != nil {
 		log.Printf("Failed to decode Pubsub notification: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	log.Printf("%v", pn)
 
 	var n Notification
 	if err := json.Unmarshal(pn.Message.Data, &n); err != nil {
@@ -212,8 +229,22 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	log.Printf("%v", n)
 	i := Image{Repository: "", Tag: n.Tag, Digest: n.Digest}
+
+	if i.Digest == "" || i.Tag == "" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Check to see if this image has any dependencies.
+	ref, err := name.ParseReference(i.Digest)
+	if err != nil {
+		log.Printf("parse(%s) = %v", i.Digest, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("DEMO: %s@%s", n.Tag, ref.Identifier())
 
 	// Only handle INSERT notifications.
 	if n.Action != "INSERT" {
@@ -227,6 +258,7 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+
 	// INSERT into images table.
 	if err := addImage(r.Context(), i); err != nil {
 		fmt.Printf("Failed to add image %v to spanner: %v", i, err)
@@ -234,14 +266,6 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Printf("Added image %v to spanner...\n", i)
-
-	// Check to see if this image has any dependencies.
-	ref, err := name.ParseReference(i.Digest)
-	if err != nil {
-		log.Printf("parse(%s) = %v", i.Digest, err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
 	img, err := remote.Image(ref, remote.WithAuthFromKeychain(google.Keychain))
 	if err != nil {
 		log.Printf("pull(%s) = %v", ref, err)
@@ -262,7 +286,7 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusInternalServerError)
 					return
 				}
-				log.Printf("%s depends on %s@%s", ref, baseRef, baseDigest)
+				log.Printf("DEMO: %s depends on %s@%s", ref, baseRef, baseDigest)
 				// TODO: Set up a pubsub subscription (if needed for cross-project stuff).
 				wr := WatchReq{
 					SourceDigest: ref.Identifier(),
@@ -286,8 +310,15 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 				}
 
 				if got, want := desc.Digest.String(), baseDigest; got != want {
-					log.Printf("%s depends on %s but is out of date; got %s want %s", ref, baseRef, got, want)
-					// TODO: Rebase? Rebuild? Pubsub?
+					log.Printf("DEMO %s depends on %s but is out of date; got %s want %s", ref, baseRef, got, want)
+					if ref.String() == servTag {
+						res := topic.Publish(r.Context(), &pubsub.Message{Data: []byte(baseRef.String())})
+						id, err := res.Get(r.Context())
+						if err != nil {
+							log.Printf("Publish(%s): %v", baseRef, err)
+						}
+						log.Printf("Published %s", id)
+					}
 				}
 			}
 		}
@@ -317,28 +348,17 @@ func HandleNotification(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		got, want := digest, ref.Identifier()
-		log.Printf("%s depends on %s but is out of date; got %s want %s", tag, i.Tag, got, want)
-		// TODO: Rebase? Rebuild? Pubsub?
+		log.Printf("DEMO: %s depends on %s but is out of date; got %s want %s", tag, i.Tag, got, want)
+		if tag == servTag {
+			res := topic.Publish(r.Context(), &pubsub.Message{Data: []byte(i.Tag)})
+			id, err := res.Get(r.Context())
+			if err != nil {
+				log.Printf("Publish(%s): %v", i.Tag, err)
+			}
+			log.Printf("Published %s", id)
+		}
 	}
 	defer iter.Stop()
 
-	// Call differ to get all image digests that need be rebuilt (images that depend on upstream).
-	params := fmt.Sprintf("tag=%s&digest=%s", n.Tag, n.Digest)
-	path := fmt.Sprintf("%s?%s", differURL, params)
-	resp, err := http.Get(path)
-	if err != nil {
-		fmt.Printf("Diff request %q failed: %v\n", path, err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("Failed to read body from diff request %q: %v\n", path, err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	fmt.Printf("Successful diff request %q returned: %v", path, body)
-	// Send build trigger requests for all out of date images
 	w.WriteHeader(http.StatusOK)
 }

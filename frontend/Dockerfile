@@ -18,7 +18,7 @@ RUN npm run build
 
 
 ### Stage 2 - the production environment
-FROM nginx:alpine
+FROM us-docker.pkg.dev/jonjohnson-test/sstp-hackathon/nginx:latest
 
 # Copy built frontend to be served by nginx
 COPY --from=builder /app/build /usr/share/nginx/html/
